@@ -175,11 +175,19 @@ def submit_video(prompt, first_frame, dur, seed, negative=None):
     for _ in range(120):
         if status in ("completed", "failed", "cancelled", "expired"): break
         time.sleep(8)
-        s = requests.get(poll, headers=or_headers(), timeout=30); s.raise_for_status()
-        status = s.json().get("status", status)
+        try:
+            s = requests.get(poll, headers=or_headers(), timeout=30); s.raise_for_status()
+            status = s.json().get("status", status)
+        except (requests.exceptions.RequestException, ValueError) as e:
+            log(f"  poll hiccup ({type(e).__name__}), retrying"); continue
     if status != "completed": raise RuntimeError(f"job {jid} {status}")
-    d = requests.get(f"{OR}/videos/{jid}/content?index=0", headers=or_headers(), timeout=600); d.raise_for_status()
-    return d.content
+    for attempt in range(3):
+        try:
+            d = requests.get(f"{OR}/videos/{jid}/content?index=0", headers=or_headers(), timeout=600); d.raise_for_status()
+            return d.content
+        except requests.exceptions.RequestException as e:
+            log(f"  download hiccup ({type(e).__name__}), retrying"); time.sleep(5)
+    raise RuntimeError(f"download failed for job {jid}")
 
 # ---------- Step 5: gate ----------
 def gate(clip_path, first_frame, workdir, n):
