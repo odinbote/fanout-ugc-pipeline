@@ -1,0 +1,5 @@
+This is basically a cheat code for becoming a better engineer.
+
+I used Fanout to level up my skills, with interactive animations, system design breakdowns, AI research, and structured learning paths—all in one place.
+
+If you want to start thinking like a senior engineer, check out Fanout.sh.

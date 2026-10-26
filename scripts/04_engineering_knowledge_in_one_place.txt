@@ -1,0 +1,7 @@
+Finally, someone put the kind of engineering knowledge you usually spend hours hunting for into one place. It's called Fanout.
+
+Want to understand how Netflix handles millions of requests? Dive into System Design. Want to understand how modern AI works? Explore AI Engineering and Inference Engineering, alongside research papers and technical notes.
+
+It's the kind of resource you wish you'd found earlier.
+
+Check out Fanout.sh.

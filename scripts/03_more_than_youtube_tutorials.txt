@@ -1,0 +1,5 @@
+If you want to become a better engineer, you need more than random YouTube tutorials.
+
+That's why I like Fanout. It brings together courses on System Design, AI Engineering, and Inference Engineering, plus research papers and technical notes, all in one place.
+
+Want to level up your engineering skills? Check out Fanout.sh.

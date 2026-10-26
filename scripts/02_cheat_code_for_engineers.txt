@@ -1,0 +1,7 @@
+This is basically a cheat code for engineers.
+
+Fanout brings together courses on System Design, AI Engineering, and Inference Engineering, along with research papers, technical notes, and resources to help you level up your skills.
+
+Whether you're learning how systems at Netflix and Uber work or diving into AI engineering, Fanout helps you go deeper into the concepts behind what you're building.
+
+If you want to start thinking like a senior engineer, check out Fanout.sh.
