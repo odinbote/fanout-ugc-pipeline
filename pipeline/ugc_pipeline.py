@@ -33,9 +33,16 @@ small real smile.
 Audio: her natural voice, casual American, mid-20s, lively and warm with real energy,
 slightly imperfect like a real voice memo, not a presenter read, phone mic in a quiet room. No music, no sound effects, no subtitles, no captions, no on-screen text.
 
-Total clip length: {dur} seconds."""
+{timing}Total clip length: {dur} seconds."""
 
-NEGATIVE = ("eye roll, looking up, looking away, frozen face, blank stare, deadpan, hands still in lap, "
+TIMING_BLOCK = """Timing inside the clip: from 0:00 to 0:0{speech} she says the whole line at that natural
+quick pace, the words spread evenly across those {speech} seconds, finishing by 0:0{speech}.
+From 0:0{speech} to 0:0{dur} she is silent: no more words, no mouth movement, she holds eye
+contact with a small real smile and her hands settle. """
+USE_TIMING = False  # user turned the timestamp idea off on Oct 29; --timing re-enables it
+
+NEGATIVE = ("morphing, warping, face distortion, drifting eyes, lazy eye, extra fingers, lip-sync mismatch, "
+            "eye roll, looking up, looking away, frozen face, blank stare, deadpan, hands still in lap, "
             "robotic, presenter voice, slow speech, slow motion, drawn-out words, long pause, stutter, jump cut, zoom, pull back, reframe, "
             "subtitles, captions, music")
 
@@ -53,7 +60,7 @@ HOOK_MOOD = ("eyes on the lens the whole time, lit up like she just found someth
              "already gesturing at chest height — genuinely enthusiastic, human, not a presenter, not performing.")
 HOOK_PACE = "fast and fluent like a real influencer talking to camera, with a tiny beat after the key phrase and strong emphasis on the key words"
 HOOK_AUDIO = "casual American, mid-20s, natural and warm, lightly upbeat, slightly imperfect like a real voice memo, not a presenter read,"
-HOOK_NEGATIVE = ("eye roll, looking up, looking away, frozen face, blank stare, deadpan, hands still in lap, robotic, presenter voice, salesy, slow speech, slow motion, drawn-out words, long pause, stutter, jump cut, zoom, "
+HOOK_NEGATIVE = ("morphing, warping, face distortion, drifting eyes, lazy eye, extra fingers, lip-sync mismatch, eye roll, looking up, looking away, frozen face, blank stare, deadpan, hands still in lap, robotic, presenter voice, salesy, slow speech, slow motion, drawn-out words, long pause, stutter, jump cut, zoom, "
                  "pull back, reframe, subtitles, captions, music")
 
 def log(*a): print(*a, flush=True)
@@ -108,11 +115,49 @@ def split_script(text, max_words=12, dur_override=None):
         out.append({"n": i, "line": line, "words": wc, "dur": d})  # tight: <=9w 4s, 10-14w 6s, 15+w 8s (user: 6/8s clips felt slow)
     return out
 
+PACK_TARGET = 19      # words that fill a 6 s clip at ~3.3 words/s; prefer 6 s clips
+PACK_MAX_8S = 26      # a single sentence up to this many words may take an 8 s clip
+BUCKETS = [(11, 4), (19, 6), (26, 8)]
+
+def pack_clips(text):
+    """Pack whole sentences, in order, into clips that fill a Veo duration. Prefer 6 s; a sentence
+    longer than 19 words gets its own 8 s clip; anything over 26 words is split at a clause first."""
+    text = re.sub(r"\s+", " ", text.replace("…", "...")).strip()
+    text = re.sub(r"\s*\.\.\.\s*", ", ", text); text = re.sub(r",\s*,", ",", text)
+    text = re.sub(r"\b([A-Za-z]+)\.sh\b", r"\1 dot ess aitch", text)
+    units = []
+    for sent in [x.strip() for x in re.split(r"(?<=[.!?])\s+", text) if x.strip()]:
+        if len(sent.split()) > PACK_MAX_8S:
+            units += [c["line"] for c in split_script(sent, PACK_TARGET)]
+        else:
+            units.append(sent)
+    packed = []; cur = ""
+    for u in units:
+        cand = (cur + " " + u).strip()
+        if cur and len(cand.split()) > PACK_TARGET:
+            packed.append(cur); cur = u
+        else:
+            cur = cand
+    if cur: packed.append(cur)
+    out = []
+    for i, line in enumerate(packed, 1):
+        if not re.search(r"[.!?]$", line): line = line.rstrip(",") + "."
+        wc = len(line.split()); dur = next(d for mx, d in BUCKETS if wc <= mx)
+        out.append({"n": i, "line": line, "words": wc, "dur": dur})
+    return out
+
 def beat_for(n):
     return BEAT1 if n == 1 else BEATS[(n - 2) % len(BEATS)]
 
+def speech_seconds(words, dur):
+    est = max(1.5, round(words / 3.3 * 2) / 2)          # ~3.3 words/s, rounded to 0.5 s
+    return min(est, dur - 1)                              # keep at least 1 s of silence at the end
+
 def build_prompt(clip, room):
-    pr = TEMPLATE.format(room=room, beat=beat_for(clip["n"]), line=clip["line"], dur=clip["dur"])
+    sp = speech_seconds(clip["words"], clip["dur"])
+    sp_txt = str(int(sp)) if float(sp).is_integer() else f"{sp:.1f}"
+    timing = TIMING_BLOCK.format(speech=sp_txt, dur=clip["dur"]) if USE_TIMING else ""
+    pr = TEMPLATE.format(room=room, beat=beat_for(clip["n"]), line=clip["line"], dur=clip["dur"], timing=timing)
     if clip["n"] == 1:  # the hook is always excited and expressive
         pr = pr.replace("eyes on the lens the whole time. Her face reacts to every phrase like a real person:\neyebrows jump on the surprising bit, eyes widen on the key word, mouth opens wide on\nthe stressed vowels, a quick head tilt or nod with the rhythm, a real smile when the\nline lands.", HOOK_MOOD)
         pr = pr.replace("fast and fluent like a real influencer talking to camera, with a tiny beat\nafter the key phrase and strong emphasis on the key words", HOOK_PACE)
@@ -314,6 +359,9 @@ def main():
     ap.add_argument("--beat-all", help="override the beat sentence for every clip after clip 1")
     ap.add_argument("--max-words", type=int, default=12, help="max words per clip before splitting (spec default 12)")
     ap.add_argument("--dur", help="per-clip duration overrides, e.g. \"1=6,4=8\"")
+    ap.add_argument("--no-pack", action="store_true", help="disable packing sentences into full 4/6/8 s clips")
+    ap.add_argument("--timing", action="store_true", help="add the in-clip speech/silence timestamp block to prompts (off by default)")
+    ap.add_argument("--join", help="merge split clips, e.g. \"3+4,6+7\" (numbers refer to the pre-join split)")
     ap.add_argument("--speed", type=float, default=1.0, help="speed-up factor applied to every generated clip before the voice swap (1.0 = off, the default; user rejected 1.15x)")
     ap.add_argument("--no-gate", action="store_true", help="generate every clip once, skip Step 5 and re-rolls")
     ap.add_argument("--no-sts", action="store_true", help="skip Step 6 voice swap")
@@ -328,11 +376,30 @@ def main():
     if not os.path.exists("voice_id.txt"): open("voice_id.txt", "w").write(voice + "\n")
     os.makedirs(a.outdir, exist_ok=True); work = os.path.join(a.outdir, "work"); os.makedirs(work, exist_ok=True)
 
-    global BEAT1, BEATS
+    global BEAT1, BEATS, USE_TIMING
+    if a.timing: USE_TIMING = True
     if a.beat1: BEAT1 = a.beat1
     if a.beat_all: BEATS = [a.beat_all]
     dur_override = {int(k): int(v) for k, v in (x.split("=") for x in a.dur.split(","))} if a.dur else None
     clips = split_script(text, a.max_words, dur_override)
+    if not a.no_pack and not a.join:
+        clips = pack_clips(text)
+        if dur_override:
+            for c in clips:
+                if c["n"] in dur_override: c["dur"] = dur_override[c["n"]]
+    if a.join:
+        for grp in a.join.split(","):
+            nums = sorted(int(x) for x in grp.split("+"))
+            keep = next(c for c in clips if c["n"] == nums[0])
+            for n in nums[1:]:
+                other = next(c for c in clips if c["n"] == n)
+                keep["line"] = keep["line"] + " " + other["line"]; clips.remove(other)
+            keep["words"] = len(keep["line"].split())
+            keep["dur"] = 4 if keep["words"] <= 9 else (6 if keep["words"] <= 14 else 8)
+        for i, c in enumerate(clips, 1): c["n"] = i
+        if dur_override:
+            for c in clips:
+                if c["n"] in dur_override: c["dur"] = dur_override[c["n"]]
     log("\nSTEP 1 — SPLIT"); log(f"{'#':>2}  {'words':>5}  {'dur':>3}  line")
     for c in clips: log(f"{c['n']:>2}  {c['words']:>5}  {c['dur']:>3}s  {c['line']}")
     prompts = {c["n"]: build_prompt(c, a.room) for c in clips}
