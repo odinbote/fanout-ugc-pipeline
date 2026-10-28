@@ -115,9 +115,9 @@ def split_script(text, max_words=12, dur_override=None):
         out.append({"n": i, "line": line, "words": wc, "dur": d})  # tight: <=9w 4s, 10-14w 6s, 15+w 8s (user: 6/8s clips felt slow)
     return out
 
-PACK_TARGET = 19      # words that fill a 6 s clip at ~3.3 words/s; prefer 6 s clips
+PACK_TARGET = 17      # words that fill a 6 s clip (measured: 16-17 words end at ~5.9 s; 19 got cut off)
 PACK_MAX_8S = 26      # a single sentence up to this many words may take an 8 s clip
-BUCKETS = [(11, 4), (19, 6), (26, 8)]
+BUCKETS = [(11, 4), (17, 6), (24, 8)]
 
 def pack_clips(text):
     """Pack whole sentences, in order, into clips that fill a Veo duration. Prefer 6 s; a sentence
