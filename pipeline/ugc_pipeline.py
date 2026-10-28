@@ -7,7 +7,7 @@ import argparse, base64, json, os, re, shutil, subprocess, sys, time, requests
 
 OR = "https://openrouter.ai/api/v1"
 EL = "https://api.elevenlabs.io/v1"
-VIDEO_MODEL = "google/veo-3.1-fast"
+VIDEO_MODEL = "google/veo-3.1"  # user: "dont use fast ever" (Oct 29)
 VISION_MODEL = "google/gemini-2.5-flash"
 
 TEMPLATE = """The provided image is the first frame; continue from it exactly. Same woman, same
@@ -350,6 +350,7 @@ def sts(clip_path, voice_id, outdir, n):
 
 # ---------- main ----------
 def main():
+    global BEAT1, BEATS, USE_TIMING, VIDEO_MODEL
     ap = argparse.ArgumentParser()
     ap.add_argument("--script"); ap.add_argument("--script-file")
     ap.add_argument("--first-frame", required=True); ap.add_argument("--voice-id")
@@ -359,6 +360,7 @@ def main():
     ap.add_argument("--beat-all", help="override the beat sentence for every clip after clip 1")
     ap.add_argument("--max-words", type=int, default=12, help="max words per clip before splitting (spec default 12)")
     ap.add_argument("--dur", help="per-clip duration overrides, e.g. \"1=6,4=8\"")
+    ap.add_argument("--model", default="google/veo-3.1", help="OpenRouter video model id (default google/veo-3.1; Fast is not to be used)")
     ap.add_argument("--no-pack", action="store_true", help="disable packing sentences into full 4/6/8 s clips")
     ap.add_argument("--timing", action="store_true", help="add the in-clip speech/silence timestamp block to prompts (off by default)")
     ap.add_argument("--join", help="merge split clips, e.g. \"3+4,6+7\" (numbers refer to the pre-join split)")
@@ -369,6 +371,10 @@ def main():
     ap.add_argument("--only-clip", type=int, help="trial mode: generate and voice-swap just this clip number, then stop")
     ap.add_argument("--start-at", type=int, default=1, help="resume from clip N (expects earlier clips + frame_N.png in outdir)")
     a = ap.parse_args()
+    VIDEO_MODEL = a.model
+    if a.beat1: BEAT1 = a.beat1
+    if a.beat_all: BEATS = [a.beat_all]
+    if a.timing: USE_TIMING = True
     text = a.script or (open(a.script_file).read() if a.script_file else None)
     if not text: sys.exit("SCRIPT missing: pass --script or --script-file")
     voice = a.voice_id or (open("voice_id.txt").read().strip() if os.path.exists("voice_id.txt") else None)
@@ -376,7 +382,6 @@ def main():
     if not os.path.exists("voice_id.txt"): open("voice_id.txt", "w").write(voice + "\n")
     os.makedirs(a.outdir, exist_ok=True); work = os.path.join(a.outdir, "work"); os.makedirs(work, exist_ok=True)
 
-    global BEAT1, BEATS, USE_TIMING
     if a.timing: USE_TIMING = True
     if a.beat1: BEAT1 = a.beat1
     if a.beat_all: BEATS = [a.beat_all]
